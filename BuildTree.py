@@ -195,9 +195,13 @@ class Node:
     def print(self):
         print("----------------------------------------------------------")
         print(f"Node: {self.get_guess_chain()} with {len(self.answer_list)} answers")
-        sorted_hints = sorted(self.buckets.keys(), key=lambda x: len(self.buckets[x].answer_list), reverse=True)
-        for hint in sorted_hints:
-            print(f"Hint {hint_to_string(self.guess, hint)} with {len(self.buckets[hint].answer_list)} answers")
+        if self.buckets is None:
+            print("No buckets")
+        else:
+            sorted_hints = sorted(self.buckets.keys(), key=lambda x: len(self.buckets[x].answer_list), reverse=True)
+            for hint in sorted_hints:
+                print(f"Hint {hint_to_string(self.guess, hint)} with {len(self.buckets[hint].answer_list)} answers")
+        print(f"agw {self.agw} -- pwt {self.pwt} -- accurate {self.accurate}")
         print("----------------------------------------------------------")
 
     def get_answer_list_hash(self):
@@ -357,4 +361,5 @@ top = Node(None)
 top.answer_list = all_answers
 top.guess = all_guesses[0]
 top.find_best_guess()
+top.print()
 print("Done.")
