@@ -170,7 +170,20 @@ class Node:
         str = f"Node: {self.get_guess_chain()} with {len(self.answer_list)} answers"
         if self.buckets is not None:
             str += f" with {len(self.buckets)} buckets"
+        str += f" agw {self.agw} -- pwt {self.pwt} -- {"not " if not self.accurate else ""}accurate"
         return str
+
+    def print(self):
+        print("----------------------------------------------------------")
+        print(f"Node: {self.get_guess_chain()} with {len(self.answer_list)} answers")
+        if self.buckets is None:
+            print("No buckets")
+        else:
+            sorted_hints = sorted(self.buckets.keys(), key=lambda x: len(self.buckets[x].answer_list), reverse=True)
+            for hint in sorted_hints:
+                print(f"Hint {hint_to_string(self.guess, hint)} with {len(self.buckets[hint].answer_list)} answers")
+        print(f"agw {self.agw} -- pwt {self.pwt} -- {"not " if not self.accurate else ""}accurate")
+        print("----------------------------------------------------------")
 
     def build_buckets(self):
         self.buckets = dict()
@@ -191,18 +204,6 @@ class Node:
         else:
             chain += self.guess.display
         return chain
-
-    def print(self):
-        print("----------------------------------------------------------")
-        print(f"Node: {self.get_guess_chain()} with {len(self.answer_list)} answers")
-        if self.buckets is None:
-            print("No buckets")
-        else:
-            sorted_hints = sorted(self.buckets.keys(), key=lambda x: len(self.buckets[x].answer_list), reverse=True)
-            for hint in sorted_hints:
-                print(f"Hint {hint_to_string(self.guess, hint)} with {len(self.buckets[hint].answer_list)} answers")
-        print(f"agw {self.agw} -- pwt {self.pwt} -- accurate {self.accurate}")
-        print("----------------------------------------------------------")
 
     def get_answer_list_hash(self):
         h = md5()
@@ -291,12 +292,17 @@ class Node:
                 yield guess
 
     def find_best_guess(self):
+        self.evaluate()
+        if self.guess is not None and self.accurate:
+            return
         best = None
         theoretical_best = self.clone()
         theoretical_best.calculate_theoretical_best()
         for guess in self.enumerate_candidate_guesses():
             cand = self.clone()
             cand.guess = guess
+            cand.build_buckets()
+            cand.evaluate()
             if compare_nodes(cand, theoretical_best) == 0 and cand.accurate:
                 best = cand
                 break
