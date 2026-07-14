@@ -13,16 +13,80 @@ namespace Nerdle
 	{
 	internal class Plan
 		{
-		static private Dictionary<string, Fraction> s_avgCache = new Dictionary<string, Fraction>();
+		static private CcDictionary<string, Fraction> s_avgCache = new CcDictionary<string, Fraction>();
 
 		static public void Solve()
 			{
-			List<Equation> firstGuesses = new List<Equation>();
-			firstGuesses.Add(Equation.FromString("43-25=18"));
-			Json json = MakeJson(1, firstGuesses[0], Equation.AllAnswers);
-			Console.WriteLine(json.ToPrettyString());
+			FindBestFirstGuess();
 
-//			int gt3 = CalculateBestFirstGuessGt3(firstGuesses);
+//			List<Equation> firstGuesses = new List<Equation>();
+//			firstGuesses.Add(Equation.FromString("43-25=18"));
+//			Json json = MakeJson(1, firstGuesses[0], Equation.AllAnswers);
+//			Console.WriteLine(json.ToPrettyString());
+			}
+
+		static private void FindBestFirstGuess()
+			{
+			CcHashSet<Equation> done = new CcHashSet<Equation>();
+			StreamReader sr = new StreamReader(Path.Combine(Program.Root, "firsts.log"));
+			foreach(string line in sr.EnumerateLines())
+				{
+				string equ = null;
+				int gt3 = -1;
+				if (line.TryMatch("^(.{8}): (-?[0-9]+)$", ref equ, ref gt3))
+					{
+					Equation guess = Equation.FromString(equ);
+					done.Add(guess);
+					}
+				}
+			sr.Close();
+
+			Lock sw_lock = new Lock();
+			StreamWriter sw = new StreamWriter(Path.Combine(Program.Root, "firsts.log"), true, Encoding.ASCII);
+
+			CcList<Equation> todo = new CcList<Equation>(Equation.AllEquations);
+			todo = new CcList<Equation>(todo.CloneReverse());
+			List<Thread> threads = new List<Thread>();
+			for(int i=0; i<Environment.ProcessorCount; i++)
+				{
+				threads.Add(ThreadEx.Fork(delegate
+					{
+					while(todo.Count > 0)
+						{
+						Equation first = todo.RemoveFirst();
+						if (done.Contains(first))
+							continue;
+						int gt3 = TryFirstGuess(first);
+						using(sw_lock.WriteLock())
+							{
+							sw.WriteLine("{0}: {1}", first, gt3);
+							sw.Flush();
+							}
+						}
+					}));
+				}
+
+			for(int i=0; i<threads.Count; i++)
+				threads[i].Join();
+
+			sw.Close();
+			}
+
+		static private int TryFirstGuess(Equation a_firstGuess)
+			{
+			Dictionary<ushort, List<Equation>> buckets = Hint.SplitAnswersByHint(Equation.AllAnswers, a_firstGuess);
+			DebugEx.Assert(buckets.Count > 1);
+
+			int gt3 = 0;
+			int bucketIndex = 0;
+			foreach(KeyValuePair<ushort, List<Equation>> pair in buckets)
+				{
+				bucketIndex++;
+				MyTrace.WriteLine("{0}: {1} of {2}", a_firstGuess, bucketIndex, buckets.Count);
+				gt3 += CalculateGt3(2, pair.Value);
+				}
+
+			return gt3;
 			}
 
 		static private List<string> EquationListToJson(List<Equation> a_equations)
@@ -31,55 +95,6 @@ namespace Nerdle
 			foreach(Equation equ in a_equations)
 				displays.Add(equ.m_display);
 			return displays;
-			}
-
-		static private int CalculateGt3(int a_guessNumber, List<Equation> a_answerList)
-			{
-			if (a_guessNumber == 1)
-				{
-				DebugEx.SelfHalt();
-				return int.MaxValue;
-				}
-			else if (a_guessNumber == 2)
-				{
-				if (a_answerList.Count == 1)
-					return 0;
-				if (a_answerList.Count == 2)
-					return 0;
-
-				int bestGt3 = int.MaxValue;
-				foreach(Equation guess in Equation.AllEquations)
-					{
-					// This is guess number 3
-
-					Dictionary<ushort, List<Equation>> buckets = Hint.SplitAnswersByHint(a_answerList, guess);
-					if (buckets.Count == 1)
-						continue;
-
-					int gt3 = 0;
-					foreach(KeyValuePair<ushort, List<Equation>> pair in buckets)
-						{
-						gt3 += CalculateGt3(a_guessNumber + 1, pair.Value);
-						if (gt3 >= bestGt3)
-							break;
-						}
-					if (gt3 < bestGt3)
-						bestGt3 = gt3;
-					if (bestGt3 == 0)
-						break;
-					}
-				return bestGt3;
-				}
-			else if (a_guessNumber == 3)
-				{
-				if (Equation.AreAllTwins(a_answerList))
-					return 0;
-				if (a_answerList.Count == 2)
-					return 1;
-				return a_answerList.Count - Equation.LargestTwinSetWithin(a_answerList);
-				}
-			else
-				return a_answerList.Count;
 			}
 
 		static private Json MakeJson(int a_guessNumber, Equation a_guess, List<Equation> a_answerList)
@@ -216,6 +231,54 @@ namespace Nerdle
 				bestOfBest.Sort(Equation.Compare);
 				return bestOfBest[0];
 				}
+			}
+
+		static private int CalculateGt3(int a_guessNumber, List<Equation> a_answerList)
+			{
+			if (a_guessNumber == 1)
+				{
+				throw new InconceivableException();
+				}
+			else if (a_guessNumber == 2)
+				{
+				if (a_answerList.Count == 1)
+					return 0;
+				if (a_answerList.Count == 2)
+					return 0;
+
+				int bestGt3 = int.MaxValue;
+				foreach(Equation guess in Equation.AllEquations)
+					{
+					// This is guess number 3
+
+					Dictionary<ushort, List<Equation>> buckets = Hint.SplitAnswersByHint(a_answerList, guess);
+					if (buckets.Count == 1 && buckets.ContainsKey(0xFF00) == false)
+						continue;
+
+					int gt3 = 0;
+					foreach(KeyValuePair<ushort, List<Equation>> pair in buckets)
+						{
+						gt3 += CalculateGt3(a_guessNumber + 1, pair.Value);
+						if (gt3 >= bestGt3)
+							break;
+						}
+					if (gt3 < bestGt3)
+						bestGt3 = gt3;
+					if (bestGt3 == 0)
+						break;
+					}
+				return bestGt3;
+				}
+			else if (a_guessNumber == 3)
+				{
+				if (Equation.AreAllTwins(a_answerList))
+					return 0;
+				if (a_answerList.Count == 2)
+					return 1;
+				return a_answerList.Count - Equation.LargestTwinSetWithin(a_answerList);
+				}
+			else
+				return a_answerList.Count;
 			}
 
 		static private Fraction CalculateAvg(List<Equation> a_answerList)

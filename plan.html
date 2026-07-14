@@ -72413,6 +72413,8 @@ function AddGuess(a_rowNum, a_plan)
 			td.style.width = "16px";
 			td.style.textAlign = "center";
 			let c = guess.substr(i, 1);
+			if (c == '-')
+				c = "&minus;";
 			td.innerHTML = c;
 			td.style.color = "#FFFFFF";
 			td.style.cursor = "pointer";
